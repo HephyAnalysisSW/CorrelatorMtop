@@ -1,8 +1,8 @@
 # CorrelatorMtop
 
 ```
-cmsrel CMSSW_10_6_28
-cd CMSSW_10_6_28/src
+cmsrel CMSSW_14_0_0
+cd CMSSW_14_0_0/src
 cmsenv
 git cms-init
 git clone https://github.com/HephyAnalysisSW/CorrelatorMtop
