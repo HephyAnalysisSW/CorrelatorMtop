@@ -19,10 +19,11 @@ from math                                import sqrt, cos, sin, pi, atan2, cosh,
 from RootTools.core.standard             import *
 
 # CorrelatorMtop
-from CorrelatorMtop.Tools.user            import plot_directory
-from CorrelatorMtop.Tools.cutInterpreter            import cutInterpreter
-from CorrelatorMtop.Tools.energyCorrelators         import getTriplets_pp_TLorentz
-from CorrelatorMtop.Tools.helpers              import deltaPhi, deltaR, deltaRTLorentz, writeObjToFile
+from CorrelatorMtop.Tools.user                 import plot_directory
+from CorrelatorMtop.Tools.cutInterpreter       import cutInterpreter
+from CorrelatorMtop.Tools.energyCorrelators    import getTriplets_pp_TLorentz
+from CorrelatorMtop.Tools.helpers              import BreitWignerReweight, deltaPhi, deltaR, deltaRTLorentz, writeObjToFile
+from CorrelatorMtop.samples.lumi_info          import lumi_info
 
 import Analysis.Tools.syncer
 import numpy as np
@@ -37,6 +38,10 @@ argParser.add_argument('--small',          action='store_true', help='Run only o
 argParser.add_argument('--selection_rec',  action='store', default='PFboosted-PFleppt')
 argParser.add_argument('--selection_gen',  action='store', default='GENboosted')
 argParser.add_argument('--era',            action='store', type=str, default="UL2018")
+argParser.add_argument('--nJobs',          action='store', type=int, default=1, help="EFT interpolation order" )
+argParser.add_argument('--job',            action='store', type=int, default=0, help="Run only jobs i" )
+# argParser.add_argument('--split',          action='store_true', help='Split sample into data and simulation?')
+
 args = argParser.parse_args()
 
 ################################################################################
@@ -54,8 +59,11 @@ outdir = "/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/"
 # Define the MC samples
 from CorrelatorMtop.samples.UL2018_unprocessed import TTToSemiLeptonic as TTToSemiLeptonic_UL2018
 
-mc = [TTToSemiLeptonic_UL2018]
-# lumi_scale = 60
+if args.nJobs > 1:
+    all_splits = TTToSemiLeptonic_UL2018.split(n=10, shuffle=False)
+    mc = [TTToSemiLeptonic_UL2018.split(n=args.nJobs, shuffle=False)[args.job]]
+else:
+    mc = [TTToSemiLeptonic_UL2018]
 
 for sample in mc:
     sample.scale = 1.
@@ -175,13 +183,26 @@ def getChargedParticlesFromJet(event, jetidx, genrec):
             particles.append( (particle, charge) )
     return particles
 
+def passTripletSelection(triplet, ptjet, sel="top"):
+    if sel=="top":
+        asymm_max = pow(172.5,2)/pow(ptjet,2)
+        short_min = 0.1
+        if triplet[1] > asymm_max:
+            return False
+        if triplet[2] < short_min:
+            return False
+        return True
+    else:
+        return False
+
 ################################################################################
 # Define sequences
 sequence       = []
 
-
 def getConstituents( event, sample ):
     # Define all variables already here
+    event.jetpt_gen = -1
+    event.jetpt_rec = -1
     event.nGenParts = -1
     event.nPFParts = -1
     event.nGenAll = -1
@@ -192,6 +213,10 @@ def getConstituents( event, sample ):
     event.weight_gen = np.zeros( ( len([]), 1), dtype='f' )
     event.zeta_rec = np.zeros( ( len([]), 3), dtype='f' )
     event.weight_rec = np.zeros( ( len([]), 1), dtype='f' )
+    event.zeta_gen_unmatched = np.zeros( ( len([]), 3), dtype='f' )
+    event.weight_gen_unmatched = np.zeros( ( len([]), 1), dtype='f' )
+    event.zeta_rec_unmatched = np.zeros( ( len([]), 3), dtype='f' )
+    event.weight_rec_unmatched = np.zeros( ( len([]), 1), dtype='f' )
 
     # Get leading lepton and leading jet
     # Check that they separated and get jet constituent
@@ -211,20 +236,22 @@ def getConstituents( event, sample ):
         return
     if deltaRTLorentz(lep_rec, jet_rec) < 0.8:
         return
-    constituent_rec = getChargedParticlesFromJet(event, jet_gen_id, "gen")
+    constituent_rec = getChargedParticlesFromJet(event, jet_rec_id, "rec")
     event.nPFParts = len(constituent_rec)
 
     # Match constituents
     maxDR_part = 0.05
     genMatches = {}
-    alreadyMatched = []
+    alreadyMatchedPF = []
     for i, (genPart, genCharge) in enumerate(constituent_gen):
+        # Find all possible matching PF particle for a gen particle
         matches = []
         for j, (pfPart, pfCharge) in enumerate(constituent_rec):
-            if j in alreadyMatched:
+            if j in alreadyMatchedPF:
                 continue
             if genCharge == pfCharge and genPart.DeltaR(pfPart) < maxDR_part:
                 matches.append(j)
+        # If there are multiple matches, find the pf with same charge and closest in pt
         matchIDX = None
         if len(matches) == 0:
             matchIDX = None
@@ -236,17 +263,30 @@ def getConstituents( event, sample ):
                 PtDiff = abs(genPart.Pt()-constituent_rec[idx][0].Pt())
                 if PtDiff < minPtDiff:
                     minPtDiff = PtDiff
-                    gmatchIDX = idx
+                    matchIDX = idx
         genMatches[i] = matchIDX
-        alreadyMatched.append(matchIDX)
+        alreadyMatchedPF.append(matchIDX)
 
     constituent_gen_matched = []
     constituent_rec_matched = []
+    constituent_gen_unmatched = []
+    constituent_rec_unmatched = []
     for i, (genPart, genCharge) in enumerate(constituent_gen):
         if genMatches[i] is not None:
+            # save matched
             constituent_gen_matched.append(constituent_gen[i][0])
             constituent_rec_matched.append(constituent_rec[genMatches[i]][0])
+        else:
+            # save gen particles without match
+            constituent_gen_unmatched.append(constituent_gen[i][0])
+    # now rec particles without match
+    for i, (pfPart, pfCharge) in enumerate(constituent_rec):
+        if i not in alreadyMatchedPF:
+            constituent_rec_unmatched.append(constituent_rec[i][0])
 
+
+    event.jetpt_gen = jet_gen.Pt()
+    event.jetpt_rec = jet_rec.Pt()
     event.nGenAll = len(constituent_gen) if len(constituent_gen) > 0 else float('nan')
     event.nGenMatched = len(constituent_gen_matched) if len(constituent_gen) > 0 else float('nan')
     event.matchingEffi = float(len(constituent_gen_matched))/float(len(constituent_gen)) if len(constituent_gen) > 0 else float('nan')
@@ -255,9 +295,34 @@ def getConstituents( event, sample ):
         _, event.zeta_rec, _, _, event.weight_rec = getTriplets_pp_TLorentz(jet_rec.Pt(), constituent_rec_matched, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
     event.passSel = True
 
+    if len(constituent_gen_unmatched) > 0:
+        _, event.zeta_gen_unmatched, _, _, event.weight_gen_unmatched = getTriplets_pp_TLorentz(jet_gen.Pt(), constituent_gen_unmatched, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
+    if len(constituent_rec_unmatched) > 0:
+        _, event.zeta_rec_unmatched, _, _, event.weight_rec_unmatched = getTriplets_pp_TLorentz(jet_rec.Pt(), constituent_rec_unmatched, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
+
 sequence.append( getConstituents )
 
+def storeBWreweight( event, sample ):
+    top_had = getHadronicTop(event)
+    if top_had is not None:
+        BW_factor_171p5 = BreitWignerReweight(width_old=1.3, width_new=1.3, peak_old=172.5, peak_new=171.5, mtop=top_had.M())
+        BW_factor_173p5 = BreitWignerReweight(width_old=1.3, width_new=1.3, peak_old=172.5, peak_new=173.5, mtop=top_had.M())
+        event.BW_reweight_171p5 = BW_factor_171p5
+        event.BW_reweight_173p5 = BW_factor_173p5
+        event.mtop = top_had.M()
+    else:
+        event.BW_reweight_171p5 = 1.0
+        event.BW_reweight_173p5 = 1.0
+        event.mtop = -1.0
 
+sequence.append( storeBWreweight )
+
+def calculateEventWeight( event, sample ):
+    Nevents = sample.normalization
+    xsection = sample.xSection
+    lumi_weight = xsection/Nevents # first scale to 1pb
+    event.event_weight_gen = float(event.Generator_weight)*lumi_weight*lumi_info["UL18"] # now multiply with gen weight and lumi factor
+sequence.append(calculateEventWeight)
 ################################################################################
 # Read variables
 
@@ -267,6 +332,7 @@ read_variables = [
     "nGenJetAK8/I",
     "GenJetAK8[pt/F,eta/F,phi/F,mass/F]",
     "nGenJetAK8_cons/I",
+    "Generator_weight/D",
     VectorTreeVariable.fromString( "GenJetAK8_cons[pt/F,eta/F,phi/F,mass/F,pdgId/I,jetIndex/I]", nMax=1000),
     "nPFJetAK8/I",
     "PFJetAK8[pt/F,eta/F,phi/F,mass/F]",
@@ -274,7 +340,6 @@ read_variables = [
     VectorTreeVariable.fromString( "PFJetAK8_cons[pt/F,eta/F,phi/F,mass/F,pdgId/I,jetIndex/I]", nMax=1000),
     "nElectron/I", "Electron[pt/F, eta/F, phi/F]",
     "nMuon/I", "Muon[pt/F, eta/F, phi/F]",
-
 ]
 
 ################################################################################
@@ -299,51 +364,118 @@ for sample in mc:
     r.start()
     new_tree = ROOT.TTree("Events", "Events")
 
-    # Define variables for the branches
-    # zeta_weight_rec = ROOT.std.vector('float')()
-    # zeta_weight_gen = ROOT.std.vector('float')()
-    # zeta_rec = ROOT.std.vector('float')()
-    # zeta_gen = ROOT.std.vector('float')()
+    ievent = array.array('i', [-1])
     zeta_weight_rec = array.array('f', [0.])
     zeta_weight_gen = array.array('f', [0.])
     zeta_rec = array.array('f', [0.])
     zeta_gen = array.array('f', [0.])
+    jetpt_rec = array.array('f', [0.])
+    jetpt_gen = array.array('f', [0.])
+    has_gen_info = array.array('i', [-1])
+    has_rec_info = array.array('i', [-1])
+    pass_triplet_top_gen = array.array('i', [-1])
+    pass_triplet_top_rec = array.array('i', [-1])
+    BW_reweight_171p5 = array.array('f', [0.])
+    BW_reweight_173p5 = array.array('f', [0.])
+    mtop = array.array('f', [0.])
+    event_weight_gen = array.array('f', [0.])
+    event_weight_rec = array.array('f', [0.])
 
     # define branches
-    # new_tree.Branch("zeta_weight_rec", zeta_weight_rec)
-    # new_tree.Branch("zeta_weight_gen", zeta_weight_gen)
-    # new_tree.Branch("zeta_rec", zeta_rec)
-    # new_tree.Branch("zeta_gen", zeta_gen)
+    new_tree.Branch("ievent", ievent, "ievent/I")
     new_tree.Branch("zeta_weight_rec", zeta_weight_rec, "zeta_weight_rec/F")
     new_tree.Branch("zeta_weight_gen", zeta_weight_gen, "zeta_weight_gen/F")
     new_tree.Branch("zeta_rec", zeta_rec, "zeta_rec/F")
     new_tree.Branch("zeta_gen", zeta_gen, "zeta_gen/F")
+    new_tree.Branch("jetpt_rec", jetpt_rec, "jetpt_rec/F")
+    new_tree.Branch("jetpt_gen", jetpt_gen, "jetpt_gen/F")
+    new_tree.Branch("has_gen_info", has_gen_info, "has_gen_info/I")
+    new_tree.Branch("has_rec_info", has_rec_info, "has_rec_info/I")
+    new_tree.Branch("pass_triplet_top_rec", pass_triplet_top_rec, "pass_triplet_top_rec/I")
+    new_tree.Branch("pass_triplet_top_gen", pass_triplet_top_gen, "pass_triplet_top_gen/I")
+    new_tree.Branch("BW_reweight_171p5", BW_reweight_171p5, "BW_reweight_171p5/F")
+    new_tree.Branch("BW_reweight_173p5", BW_reweight_173p5, "BW_reweight_173p5/F")
+    new_tree.Branch("mtop", mtop, "mtop/F")
+    new_tree.Branch("event_weight_gen", event_weight_gen, "event_weight_gen/F")
+    new_tree.Branch("event_weight_rec", event_weight_rec, "event_weight_rec/F")
 
-
+    event_counter = 0
     while r.run():
         event = r.event
+        event_counter += 1
         if event.passSel:
-            hist["MatchingEfficiency"].Fill(event.matchingEffi)
+            # hist["MatchingEfficiency"].Fill(event.matchingEffi)
+            ################################################################
+            # Fill new tree with matched triplets
             for i in range(len(event.zeta_gen)):
-                ################################################################
-                # Fill new tree
+                ievent[0] = event_counter
+                has_rec_info[0] = 1
+                has_gen_info[0] = 1
                 zeta_weight_gen[0] = event.weight_gen[i]
                 zeta_weight_rec[0] = event.weight_rec[i]
-                zeta_rec[0] = event.zeta_gen[i][0]
-                zeta_gen[0] = event.zeta_rec[i][0]
+                zeta_gen[0] = event.zeta_gen[i][0]
+                zeta_rec[0] = event.zeta_rec[i][0]
+                jetpt_gen[0] = event.jetpt_gen
+                jetpt_rec[0] = event.jetpt_rec
+                pass_triplet_top_gen[0] = 1 if passTripletSelection(event.zeta_gen[i], event.jetpt_gen, sel="top") else 0
+                pass_triplet_top_rec[0] = 1 if passTripletSelection(event.zeta_rec[i], event.jetpt_rec, sel="top") else 0
+                BW_reweight_171p5[0] = event.BW_reweight_171p5
+                BW_reweight_173p5[0] = event.BW_reweight_173p5
+                mtop[0] = event.mtop
+                event_weight_gen[0] = event.event_weight_gen
+                event_weight_rec[0] = 1.0
                 new_tree.Fill()
-                ################################################################
 
-                hist["Weight_gen"].Fill(event.weight_gen[i])
-                hist["Weight_rec"].Fill(event.weight_rec[i])
-                hist["WeightZoom_gen"].Fill(event.weight_gen[i])
-                hist["WeightZoom_rec"].Fill(event.weight_rec[i])
-                hist["Weight_matrix"].Fill(event.weight_gen[i], event.weight_rec[i])
-                hist["ZetaNoWeight_gen"].Fill(event.zeta_gen[i][0])
-                hist["ZetaNoWeight_rec"].Fill(event.zeta_rec[i][0])
-                hist["ZetaNoWeight_matrix"].Fill(event.zeta_gen[i][0], event.zeta_rec[i][0])
-                hist["Zeta_gen"].Fill(event.zeta_gen[i][0], event.weight_gen[i])
-                hist["Zeta_rec"].Fill(event.zeta_rec[i][0], event.weight_rec[i])
+                # hist["Weight_gen"].Fill(event.weight_gen[i])
+                # hist["Weight_rec"].Fill(event.weight_rec[i])
+                # hist["WeightZoom_gen"].Fill(event.weight_gen[i])
+                # hist["WeightZoom_rec"].Fill(event.weight_rec[i])
+                # hist["Weight_matrix"].Fill(event.weight_gen[i], event.weight_rec[i])
+                # hist["ZetaNoWeight_gen"].Fill(event.zeta_gen[i][0])
+                # hist["ZetaNoWeight_rec"].Fill(event.zeta_rec[i][0])
+                # hist["ZetaNoWeight_matrix"].Fill(event.zeta_gen[i][0], event.zeta_rec[i][0])
+                # hist["Zeta_gen"].Fill(event.zeta_gen[i][0], event.weight_gen[i])
+                # hist["Zeta_rec"].Fill(event.zeta_rec[i][0], event.weight_rec[i])
+            ################################################################
+            # Fill new tree with unmatched rec triplets
+            for i in range(len(event.zeta_rec_unmatched)):
+                ievent[0] = event_counter
+                has_gen_info[0] = 0
+                has_rec_info[0] = 1
+                zeta_weight_gen[0] = -1
+                zeta_weight_rec[0] = event.weight_rec_unmatched[i]
+                zeta_gen[0] = -1
+                zeta_rec[0] = event.zeta_rec_unmatched[i][0]
+                jetpt_gen[0] = event.jetpt_gen
+                jetpt_rec[0] = event.jetpt_rec
+                pass_triplet_top_gen[0] = 0
+                pass_triplet_top_rec[0] = 1 if  passTripletSelection(event.zeta_rec_unmatched[i], event.jetpt_rec, sel="top") else 0
+                BW_reweight_171p5[0] = event.BW_reweight_171p5
+                BW_reweight_173p5[0] = event.BW_reweight_173p5
+                mtop[0] = event.mtop
+                event_weight_gen[0] = event.event_weight_gen
+                event_weight_rec[0] = 1.0
+                new_tree.Fill()
+            ################################################################
+            # Fill new tree with unmatched gen triplets
+            for i in range(len(event.zeta_gen_unmatched)):
+                ievent[0] = event_counter
+                has_gen_info[0] = 1
+                has_rec_info[0] = 0
+                zeta_weight_gen[0] = event.weight_gen_unmatched[i]
+                zeta_weight_rec[0] = -1
+                zeta_gen[0] = event.zeta_gen_unmatched[i][0]
+                zeta_rec[0] = -1
+                jetpt_gen[0] = event.jetpt_gen
+                jetpt_rec[0] = event.jetpt_rec
+                pass_triplet_top_gen[0] = 1 if  passTripletSelection(event.zeta_gen_unmatched[i], event.jetpt_gen, sel="top") else 0
+                pass_triplet_top_rec[0] = 0
+                BW_reweight_171p5[0] = event.BW_reweight_171p5
+                BW_reweight_173p5[0] = event.BW_reweight_173p5
+                mtop[0] = event.mtop
+                event_weight_gen[0] = event.event_weight_gen
+                event_weight_rec[0] = 1.0
+                new_tree.Fill()
     logger.info( "Done with sample "+sample.name+" and selectionString "+cutInterpreter.cutString(args.selection_rec) )
 
     outfilename = outdir+sample.name+".root"

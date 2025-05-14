@@ -3,6 +3,7 @@ import  ROOT
 from    math    import pi, sqrt, cos, sin, sinh, log, cosh, acos
 from    array   import array
 import  itertools
+import numpy as np
 
 # Logging
 import  logging
@@ -308,3 +309,13 @@ def cosThetaStarTop(l, W, t):
     W_newSys.Boost(-boostvectortop)
     costhetastar = cos( lepton_newSys.Angle(W_newSys.Vect()) )
     return costhetastar
+
+def BreitWigner(width, peak, mtop):
+    gamma = np.sqrt(peak**2 * (peak**2 + width**2))
+    k = 2 * np.sqrt(2) * peak * width* gamma / (np.pi * sqrt(peak**2 + gamma))
+    return k/( (mtop**2 - peak**2)**2 + peak**2 * width**2 )
+
+def BreitWignerReweight(width_old, width_new, peak_old, peak_new, mtop):
+    bw_old = BreitWigner(width=width_old, peak=peak_old, mtop=mtop)
+    bw_new = BreitWigner(width=width_new, peak=peak_new, mtop=mtop)
+    return bw_new/bw_old

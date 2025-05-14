@@ -1,0 +1,7 @@
+*.pyc
+*
+!*.*
+!Makefile
+*.o
+*.so
+*.root
