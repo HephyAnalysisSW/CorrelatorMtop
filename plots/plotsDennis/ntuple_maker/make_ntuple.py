@@ -158,7 +158,7 @@ def getClosestJetIdx(object, event, maxDR, genpf_switch):
             minDR = jet.DeltaR(object)
     return idx_match
 
-def getChargedParticlesFromJet(event, jetidx, genrec):
+def getChargedParticlesFromJet(event, jetidx, genrec, N_parts_max = None):
     chargedIds = [211, 13, 11, 1, 321, 2212, 3222, 3112, 3312, 3334]
     particles = []
     if genrec == "gen":
@@ -181,7 +181,11 @@ def getChargedParticlesFromJet(event, jetidx, genrec):
             particle.SetPtEtaPhiM(event.PFJetAK8_cons_pt[iPart],event.PFJetAK8_cons_eta[iPart],event.PFJetAK8_cons_phi[iPart],event.PFJetAK8_cons_mass[iPart])
             charge = 1 if event.PFJetAK8_cons_pdgId[iPart]>0 else -1
             particles.append( (particle, charge) )
-    return particles
+    # Sort list by pt and truncate at length N_parts_max
+    particles_sorted = sorted(particles, key=lambda (particle, charge): particle.Pt(), reverse=True)
+    if N_parts_max is not None:
+        particles_sorted = particles_sorted[:N_parts_max]
+    return particles_sorted
 
 def passTripletSelection(triplet, ptjet, sel="top"):
     if sel=="top":
@@ -226,7 +230,7 @@ def getConstituents( event, sample ):
         return
     if deltaRTLorentz(lep_gen, jet_gen) < 0.8:
         return
-    constituent_gen = getChargedParticlesFromJet(event, jet_gen_id, "gen")
+    constituent_gen = getChargedParticlesFromJet(event, jet_gen_id, "gen", N_parts_max = 25)
     event.nGenParts = len(constituent_gen)
 
     # Do the same for PF jets
@@ -236,7 +240,7 @@ def getConstituents( event, sample ):
         return
     if deltaRTLorentz(lep_rec, jet_rec) < 0.8:
         return
-    constituent_rec = getChargedParticlesFromJet(event, jet_rec_id, "rec")
+    constituent_rec = getChargedParticlesFromJet(event, jet_rec_id, "rec", N_parts_max = 25)
     event.nPFParts = len(constituent_rec)
 
     # Match constituents
