@@ -3,3 +3,7 @@
 *.o
 *.so
 *.root
+plots/plotsDennis/TUnfold/testunfold*
+plots/plotsDennis/TUnfold/testUnfold*
+*.dtd
+plots/plotsDennis/TUnfold/fig*
