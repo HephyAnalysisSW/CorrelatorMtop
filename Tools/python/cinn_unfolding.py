@@ -6,6 +6,7 @@ import argparse
 import sys
 import gc
 import os
+import psutil
 import CorrelatorMtop.Tools.transformations as trf
 
 # the nflows functions what we will need in order to build our flow
@@ -139,6 +140,10 @@ class cinn_unfolding:
         torch.save(flow, save_model_file)
 
         for i in range(self.n_epochs):
+
+            process = psutil.Process(os.getpid())
+            print(f"Memory used: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+
             permut = np.random.permutation(train_transformed.shape[0])
             train_shuffle = train_transformed[permut]
 

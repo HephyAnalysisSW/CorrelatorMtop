@@ -7,6 +7,7 @@ import sys
 import gc
 from datetime import datetime
 import os
+import psutil
 from CorrelatorMtop.Tools.cinn_unfolding import cinn_unfolding
 
 ################################################################################
@@ -52,10 +53,11 @@ logger_rt = logger_rt.get_logger(args.logLevel, logFile = None)
 
 # Load data for training
 logger.info("Loading samples...")
+
 # train_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(0,50) ]
 # validation_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(50,90) ]
 # pseudodata_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(90,100) ]
-train_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(0,10) ]
+train_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(0,50) ]
 validation_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(50,60) ]
 pseudodata_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(90,91) ]
 
