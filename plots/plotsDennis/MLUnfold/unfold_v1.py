@@ -53,13 +53,9 @@ logger_rt = logger_rt.get_logger(args.logLevel, logFile = None)
 
 # Load data for training
 logger.info("Loading samples...")
-
-# train_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(0,50) ]
-# validation_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(50,90) ]
-# pseudodata_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(90,100) ]
-train_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(0,50) ]
-validation_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(50,60) ]
-pseudodata_sample_list = [f'/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_{i}.npz' for i in range(90,91) ]
+train_sample_list = [f'/scratch-cbe/users/dennis.schwarz/MTopCorrelations_npz/TTToSemiLeptonic_{i}.npz' for i in range(0,20) ]
+validation_sample_list = [f'/scratch-cbe/users/dennis.schwarz/MTopCorrelations_npz/TTToSemiLeptonic_{i}.npz' for i in range(60,80) ]
+pseudodata_sample_list = [f'/scratch-cbe/users/dennis.schwarz/MTopCorrelations_npz/TTToSemiLeptonic_{i}.npz' for i in range(80,100) ]
 
 
 train_data_transformed = get_sample(train_sample_list)
@@ -76,7 +72,7 @@ unfolding_model = cinn_unfolding(
     rec_variables = ["zeta_rec", "zeta_weight_rec", "jetpt_rec"],
     save_path = model_save_path
     )
-unfolding_model.n_epochs = 100
+unfolding_model.n_epochs = 200
 unfolding_model.set_logger(logger)
 unfolding_model.prepare()
 if args.train:
