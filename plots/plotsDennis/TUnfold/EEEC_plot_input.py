@@ -37,6 +37,7 @@ def drawMatrix(hist, outname):
     ROOT.gPad.SetRightMargin(0.19)
     ROOT.gPad.SetLeftMargin(0.19)
     ROOT.gPad.SetBottomMargin(0.12)
+    ROOT.gPad.SetLogz()
     hist.Draw("COLZ")
     c.Print(outname)
 

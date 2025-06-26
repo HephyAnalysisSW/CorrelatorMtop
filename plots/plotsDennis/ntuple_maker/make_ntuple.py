@@ -185,6 +185,7 @@ def getChargedParticlesFromJet(event, jetidx, genrec, N_parts_max = None):
     particles_sorted = sorted(particles, key=lambda (particle, charge): particle.Pt(), reverse=True)
     if N_parts_max is not None:
         particles_sorted = particles_sorted[:N_parts_max]
+    # ONE COULD ALSO INTRODUCE A PT CUT HERE
     return particles_sorted
 
 def passTripletSelection(triplet, ptjet, sel="top"):

@@ -3,6 +3,7 @@ from torch.utils.data import Dataset, DataLoader
 import h5py
 import numpy as np
 import os
+import json
 from nflows.flows.base import Flow
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms.base import CompositeTransform
@@ -24,7 +25,7 @@ class CINNUnfolding:
         self.gen_features = gen_features
         self.save_path = save_path
 
-        self.batch_size = 512
+        self.batch_size = 1024
         self.learning_rate = 1e-4
         self.n_epochs = 25
         self.n_layers = 6
@@ -42,7 +43,6 @@ class CINNUnfolding:
         if normalize and standardize:
             raise ValueError("Choose either normalize or standardize, not both.")
 
-        # Stats (may be computed or provided)
         self.gen_min = np.array(gen_min) if gen_min is not None else None
         self.gen_max = np.array(gen_max) if gen_max is not None else None
         self.gen_mean = np.array(gen_mean) if gen_mean is not None else None
@@ -113,6 +113,49 @@ class CINNUnfolding:
             return x * torch.tensor(self.gen_std) + torch.tensor(self.gen_mean)
         return x
 
+    def __save_loss(self):
+        loss_path = os.path.join(self.save_path, 'loss.npz')
+        np.savez(loss_path,
+            loss_train=np.array(self.loss_train),
+            loss_val=np.array(self.loss_val)
+            )
+        if self.logger:
+            self.logger.info(f"Saved loss: {loss_path}")
+
+    def __save_norm_params(self):
+        norm_params = {
+            'normalize': self.normalize,
+            'standardize': self.standardize,
+            'gen_min': self.gen_min.tolist() if self.gen_min is not None else None,
+            'gen_max': self.gen_max.tolist() if self.gen_max is not None else None,
+            'gen_mean': self.gen_mean.tolist() if self.gen_mean is not None else None,
+            'gen_std': self.gen_std.tolist() if self.gen_std is not None else None,
+            'rec_min': self.rec_min.tolist() if self.rec_min is not None else None,
+            'rec_max': self.rec_max.tolist() if self.rec_max is not None else None,
+            'rec_mean': self.rec_mean.tolist() if self.rec_mean is not None else None,
+            'rec_std': self.rec_std.tolist() if self.rec_std is not None else None
+        }
+        norm_path = os.path.join(self.save_path, 'norm_params.json')
+        with open(norm_path, 'w') as f:
+            json.dump(norm_params, f)
+        if self.logger:
+            self.logger.info(f"Saved normalization parameters: {norm_path}")
+
+    def __load_norm_params(self, model_path):
+        with open(os.path.join(os.path.dirname(model_path), 'norm_params.json'), 'r') as f:
+            norm_params = json.load(f)
+
+        self.normalize = norm_params['normalize']
+        self.standardize = norm_params['standardize']
+        self.gen_min = np.array(norm_params['gen_min']) if norm_params['gen_min'] is not None else None
+        self.gen_max = np.array(norm_params['gen_max']) if norm_params['gen_max'] is not None else None
+        self.gen_mean = np.array(norm_params['gen_mean']) if norm_params['gen_mean'] is not None else None
+        self.gen_std = np.array(norm_params['gen_std']) if norm_params['gen_std'] is not None else None
+        self.rec_min = np.array(norm_params['rec_min']) if norm_params['rec_min'] is not None else None
+        self.rec_max = np.array(norm_params['rec_max']) if norm_params['rec_max'] is not None else None
+        self.rec_mean = np.array(norm_params['rec_mean']) if norm_params['rec_mean'] is not None else None
+        self.rec_std = np.array(norm_params['rec_std']) if norm_params['rec_std'] is not None else None
+
     def train(self):
         if self.logger:
             self.logger.info("Create DataLoaders...")
@@ -165,24 +208,38 @@ class CINNUnfolding:
             model_path = os.path.join(self.save_path, f"model_epoch{epoch}.pt")
             torch.save(self.model.state_dict(), model_path)
 
+        # Save normalization stats and loss
+        self.__save_norm_params()
+        self.__save_loss()
+
         if self.logger:
             self.logger.info(f"Saved final model: {model_path}")
 
-    def predict(self, rec_data_file, model_path, n_samples=1):
+    def predict(self, rec_dataset, model_path, n_samples=1):
+        # Load normalization/standardization parameters
+        self.__load_norm_params(model_path)
+
+        # Load the trained model
         self.model.load_state_dict(torch.load(model_path, map_location=self.device))
         self.model.to(self.device)
         self.model.eval()
 
+        # Collect reconstructed features from the dataset
         rec_data = []
-        with h5py.File(rec_data_file, "r") as f:
-            for i in range(len(f[self.rec_features[0]])):
-                rec = np.stack([f[feat][i] for feat in self.rec_features], axis=0)
-                rec_data.append(rec)
+        rec_loader = DataLoader(rec_dataset, batch_size=1024, shuffle=False)
 
-        rec_array = torch.tensor(rec_data, dtype=torch.float32)
-        rec_array = self._transform_rec(rec_array).to(self.device)
+        for _, rec in rec_loader:  # Each batch: (gen, rec), we only need rec
+            rec_data.append(rec)
 
+        # Stack all reco features into a tensor
+        rec_array = torch.cat(rec_data, dim=0)
+        rec_array = self._transform_rec(rec_array).to(torch.float32).to(self.device)
+
+        # Generate n_samples of gen values for each reco event
         with torch.no_grad():
-            samples = self.model.sample(n_samples, context=rec_array)
+            gen_samples = self.model.sample(n_samples, context=rec_array)
 
-        return samples.cpu().numpy()
+        # Invert normalization to return gen predictions in original units
+        gen_samples = self.invert_gen(gen_samples).cpu().numpy()
+
+        return gen_samples

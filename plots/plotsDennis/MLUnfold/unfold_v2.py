@@ -21,6 +21,7 @@ argParser.add_argument('--logLevel', action='store',      default='INFO', nargs=
 argParser.add_argument('--small', action='store_true')
 argParser.add_argument('--train', action='store_true')
 argParser.add_argument('--predict', action='store_true')
+argParser.add_argument('--version', action='store', default="v3")
 argParser.add_argument('--reduce', action='store', default=None, type=int)
 
 args = argParser.parse_args()
@@ -54,6 +55,7 @@ selection_string = "(has_rec_info == 1) & (has_gen_info == 1) & (pass_triplet_to
 # Path to h5 files
 train_file_path = "/scratch-cbe/users/dennis.schwarz/MTopCorrelations_h5/TTToSemiLeptonic_train.h5"
 val_file_path   = "/scratch-cbe/users/dennis.schwarz/MTopCorrelations_h5/TTToSemiLeptonic_val.h5"
+pseudo_file_path   = "/scratch-cbe/users/dennis.schwarz/MTopCorrelations_h5/TTToSemiLeptonic_pseudo.h5"
 
 # create data sets
 fraction = 1.0
@@ -63,14 +65,16 @@ if args.reduce is not None:
     fraction = 1.0/args.reduce
 train_dataset = H5Dataset(train_file_path, gen_features, rec_features, selection=selection_string, fraction=fraction)
 val_dataset = H5Dataset(train_file_path, gen_features, rec_features, selection=selection_string, fraction=fraction)
-
+pseudo_dataset = H5Dataset(pseudo_file_path, gen_features, rec_features, selection=selection_string, fraction=fraction)
 
 ################################################################################
 # Unfolding
 logger.info("Set up unfolding class")
-model_path = "/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/Unfolding_model_v2/"
+model_dir = f"Unfolding_model_{args.version}"
 if args.small:
-    model_path = "/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/Unfolding_model_v2_small/"
+    model_dir += "_small"
+
+model_path = os.path.join("/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/", model_dir)
 
 model = CINNUnfolding(
     train_data=train_dataset,
@@ -81,21 +85,21 @@ model = CINNUnfolding(
     normalize = True
 )
 
-### TODO
-# one could make the min/max parameters for normalization part of the model and save those after training
-# then those could be read for predict
-
 model.logger = logger
 model.n_epochs = 200
 model.learning_rate = 1e-5
 # model.batch_size = 5000
 
-
-
-
 if args.train:
     logger.info("Start training")
     model.train()
+    # get loss
+    loss_training = model.loss_train
+    loss_validation = model.loss_val
+    print(loss_training)
+    print(loss_validation)
 
-# Later:
-# samples = model.predict("val_data.h5", "./cinn_checkpoints/model_epoch25.pt", n_samples=1)
+if args.predict:
+    trained_model_path = "/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/Unfolding_model_v2/model_epoch200.pt"
+    unfolded_samples = model.predict(pseudo_dataset, trained_model_path, n_samples=1)
+    print(unfolded_samples)

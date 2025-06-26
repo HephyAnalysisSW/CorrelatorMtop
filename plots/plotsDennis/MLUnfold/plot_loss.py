@@ -22,7 +22,7 @@ args = argParser.parse_args()
 
 data = np.load(args.file)
 g_loss_train = getGraph(data['loss_train'])
-g_loss_val = getGraph(data['loss_validation'])
+g_loss_val = getGraph(data['loss_val'])
 
 plotpath = os.path.join(plot_directory, "Unfolding", "loss.pdf")
 c = ROOT.TCanvas("", "", 600, 600)
