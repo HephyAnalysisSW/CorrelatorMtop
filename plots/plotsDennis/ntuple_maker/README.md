@@ -21,8 +21,8 @@ For each triplet, following values are stored:
 - `has_gen_info`: Does the correlator exist on particle level (int)
 - `pass_triplet_top_gen`: Does the correlator pass the requirements of the top correlator on detector level (int)
 - `pass_triplet_top_rec`: Does the correlator pass the requirements of the top correlator on particle level (int)
-- `BW_reweight_171p5`: Breit-Wigner weight to reweight to mtop = 171.5 GeV
-- `BW_reweight_173p5`: Breit-Wigner weight to reweight to mtop = 173.5 GeV
-- `mtop`: Parton level mtop
-- `event_weight_gen`: Particle level event weight
-- `event_weight_rec`: Detector level event weight
+- `BW_reweight_171p5`: Breit-Wigner weight to reweight to mtop = 171.5 GeV (float)
+- `BW_reweight_173p5`: Breit-Wigner weight to reweight to mtop = 173.5 GeV (float)
+- `mtop`: Parton level mtop (float)
+- `event_weight_gen`: Particle level event weight (float)
+- `event_weight_rec`: Detector level event weight (float)
