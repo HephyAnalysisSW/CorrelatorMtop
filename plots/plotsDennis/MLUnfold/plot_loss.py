@@ -25,9 +25,28 @@ g_loss_train = getGraph(data['loss_train'])
 g_loss_val = getGraph(data['loss_val'])
 
 plotpath = os.path.join(plot_directory, "Unfolding", "loss.pdf")
+
+
+ROOT.gStyle.SetLegendBorderSize(0)
+ROOT.gStyle.SetPadTickX(1)
+ROOT.gStyle.SetPadTickY(1)
+ROOT.gStyle.SetOptStat(0)
+ROOT.gStyle.SetEndErrorSize(0)
 c = ROOT.TCanvas("", "", 600, 600)
+ROOT.gPad.SetLeftMargin(.12)
+ROOT.gPad.SetTopMargin(.05)
+ROOT.gPad.SetRightMargin(.05)
+
+g_loss_train.SetTitle(" ")
+g_loss_train.GetXaxis().SetTitle("Epoch")
+g_loss_train.GetYaxis().SetTitle("Loss")
 g_loss_train.SetLineColor(ROOT.kAzure+7)
 g_loss_val.SetLineColor(ROOT.kRed-2)
 g_loss_train.Draw("AL")
 g_loss_val.Draw("L SAME")
+leg = ROOT.TLegend(.6,.6,.85,.85)
+leg.AddEntry(g_loss_train, "Training", "l")
+leg.AddEntry(g_loss_val, "Validation", "l")
+leg.Draw()
+
 c.Print(plotpath)

@@ -53,8 +53,6 @@ class CINNUnfolding:
         self.rec_mean = np.array(rec_mean) if rec_mean is not None else None
         self.rec_std = np.array(rec_std) if rec_std is not None else None
 
-        self.__compute_data_stats()
-
         self.model = self.__build_flow()
         self.model.to(self.device)
 
@@ -157,6 +155,10 @@ class CINNUnfolding:
         self.rec_std = np.array(norm_params['rec_std']) if norm_params['rec_std'] is not None else None
 
     def train(self):
+        if self.logger:
+            self.logger.info("Compute parameters for normalization...")
+        self.__compute_data_stats()
+
         if self.logger:
             self.logger.info("Create DataLoaders...")
 

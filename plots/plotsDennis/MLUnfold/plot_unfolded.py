@@ -10,6 +10,12 @@ from MyRootTools.plotter.Plotter    import Plotter
 
 ROOT.gROOT.SetBatch(ROOT.kTRUE)
 
+def get_np_from_sample(sample):
+    train_loader = DataLoader(sample, batch_size=1024, shuffle=True, num_workers=0)
+    for gen, rec in train_loader:
+        jetpt_gen_values.append(rec[2].item())
+    print(jetpt_gen_values[:])
+
 def get_sample(sample_paths):
     combined_data = {}
     for sample_path in sample_paths:
@@ -45,12 +51,21 @@ h_unfolded = ROOT.TH1F("unfolded", "", 7, 1.0, 7.0)
 h_truth = ROOT.TH1F("truth", "", 7, 1.0, 7.0)
 h_detector = ROOT.TH1F("detector", "", 7, 1.0, 7.0)
 
-unfolded_path = "/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/Unfolded/unfolded_v1.npz"
+unfolded_path = "/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/Unfolded/unfolded_v2.npz"
 unfolded_data = np.load(unfolded_path)
 
 fill_zeta_plot(h_unfolded, unfolded_data)
 
-train_sample_list = ['/groups/hephy/cms/dennis.schwarz/www/CorrelatorMtop/results/TTToSemiLeptonic_%i.npz'%(i) for i in range(0,50) ]
+
+# rec_features = ["zeta_rec", "zeta_weight_rec", "jetpt_rec"]
+# gen_features = ["zeta_gen", "zeta_weight_gen", "jetpt_gen"]
+# selection_string = "(has_rec_info == 1) & (has_gen_info == 1) & (pass_triplet_top_gen == 1) & (pass_triplet_top_rec == 1)"
+# train_file_path = "/scratch-cbe/users/dennis.schwarz/MTopCorrelations_h5/TTToSemiLeptonic_train.h5"
+# train_dataset = H5Dataset(train_file_path, gen_features, rec_features, selection=selection_string, fraction=0.1)
+#
+# get_np_from_sample(train_dataset)
+
+train_sample_list = ['/scratch-cbe/users/dennis.schwarz/MTopCorrelations_npz/TTToSemiLeptonic_%i.npz'%(i) for i in range(0,60) ]
 train_data = get_sample(train_sample_list)
 
 fill_zeta_plot(h_truth, train_data)

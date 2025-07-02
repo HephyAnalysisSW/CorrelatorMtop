@@ -63,6 +63,7 @@ if args.small:
     fraction = 0.0001
 if args.reduce is not None:
     fraction = 1.0/args.reduce
+
 train_dataset = H5Dataset(train_file_path, gen_features, rec_features, selection=selection_string, fraction=fraction)
 val_dataset = H5Dataset(train_file_path, gen_features, rec_features, selection=selection_string, fraction=fraction)
 pseudo_dataset = H5Dataset(pseudo_file_path, gen_features, rec_features, selection=selection_string, fraction=fraction)
@@ -93,13 +94,22 @@ model.learning_rate = 1e-5
 if args.train:
     logger.info("Start training")
     model.train()
-    # get loss
-    loss_training = model.loss_train
-    loss_validation = model.loss_val
-    print(loss_training)
-    print(loss_validation)
 
 if args.predict:
+    logger.info("Start unfolding")
     trained_model_path = "/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/Unfolding_model_v2/model_epoch200.pt"
-    unfolded_samples = model.predict(pseudo_dataset, trained_model_path, n_samples=1)
-    print(unfolded_samples)
+    unfolded_sample = model.predict(pseudo_dataset, trained_model_path, n_samples=100) # is of shape (N_triplets, N_samples, N_gen_features)
+    # zeta_gen          = unfolded_sample[:, 0, 0]
+    # zeta_weight_gen   = unfolded_sample[:, 0, 1]
+    # jetpt_gen         = unfolded_sample[:, 0, 2]
+
+    # For each observable, lets take the mean over all samples
+    zeta_gen        = unfolded_sample[:, :, 0].mean(axis=1)
+    zeta_weight_gen = unfolded_sample[:, :, 1].mean(axis=1)
+    jetpt_gen       = unfolded_sample[:, :, 2].mean(axis=1)
+
+    unfolded_ntuple_path = f"/groups/hephy/cms/dennis.schwarz/CorrelatorMtop/Unfolded/unfolded_{args.version}.npz"
+    if args.small:
+        unfolded_ntuple_path = unfolded_ntuple_path.replace(".npz", "_small.npz")
+    np.savez(unfolded_ntuple_path, zeta_gen=zeta_gen, zeta_weight_gen=zeta_weight_gen, jetpt_gen=jetpt_gen)
+    logger.info(f"Saved unfolded ntuple: {unfolded_ntuple_path}")
