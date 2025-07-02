@@ -51,7 +51,8 @@ int main(int argc, char* argv[]){
   fill_hists(s_ttbar);
 
   // ---------------------------------------------------------------------------
-  // Scale pseudo data to normalization of ttbar
+  // Scale pseudo data to normalization of ttbar to make the normalization
+  // even with the sample used in the response matrix
   double scale_factor = 1.0;
   if(s_pseudo.rec->Integral() > 0) scale_factor = s_ttbar.rec->Integral()/s_pseudo.rec->Integral();
   cout << "Scaling pseudo data with factor " << scale_factor << endl;
