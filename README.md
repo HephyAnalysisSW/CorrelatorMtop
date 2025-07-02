@@ -26,4 +26,4 @@ Everything else should run.
 
 ## Usage
 There are separate instructions for:
-ML unfolding in `plots/plotsDennis/MLUnfold/`, producing numpy ntuples in `plots/plotsDennis/ntuple_maker/`, and binned unfolding in `plots/plotsDennis/TUnfold/`.
+Producing ntuples in `plots/plotsDennis/ntuple_maker/`, ML unfolding in `plots/plotsDennis/MLUnfold/`, and binned unfolding in `plots/plotsDennis/TUnfold/`.
