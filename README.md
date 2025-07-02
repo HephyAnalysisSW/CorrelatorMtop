@@ -1,8 +1,11 @@
 # CorrelatorMtop
 
+Framework for ML unfolding and binned unfolding using TUnfold for a measurement of energy correlators.
+
+## Setup
 ```
-cmsrel CMSSW_14_0_0
-cd CMSSW_14_0_0/src
+cmsrel CMSSW_10_6_28
+cd CMSSW_10_6_28/src
 cmsenv
 git cms-init
 git clone git@github.com:HephyAnalysisSW/CorrelatorMtop.git
@@ -12,3 +15,15 @@ curl -sLO https://gist.githubusercontent.com/dietrichliko/8aaeec87556d6dd2f60d8d
 . ./install_correctionlib.sh
 scram b -j10
 ```
+
+Then, put your user name in `Tools/python/user.py`.
+
+## CMSSW version
+
+Tested with CMSSW10.
+There might be issues in compiling TUnfold in newer versions.
+Everything else should run.
+
+## Usage
+There are separate instructions for:
+ML unfolding in `plots/plotsDennis/MLUnfold/`, producing numpy ntuples in `plots/plotsDennis/ntuple_maker/`, and binned unfolding in `plots/plotsDennis/TUnfold/`.
