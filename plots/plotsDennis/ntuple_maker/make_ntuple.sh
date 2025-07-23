@@ -1,1 +1,1 @@
-python make_ntuple.py #SPLIT100
+python make_ntuple.py --fillHists #SPLIT100

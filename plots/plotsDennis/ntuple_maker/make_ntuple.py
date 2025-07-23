@@ -21,7 +21,7 @@ from RootTools.core.standard             import *
 # CorrelatorMtop
 from CorrelatorMtop.Tools.user                 import plot_directory
 from CorrelatorMtop.Tools.cutInterpreter       import cutInterpreter
-from CorrelatorMtop.Tools.energyCorrelators    import getTriplets_pp_TLorentz
+from CorrelatorMtop.Tools.energyCorrelators    import getTriplets_pp_TLorentz_label
 from CorrelatorMtop.Tools.helpers              import BreitWignerReweight, deltaPhi, deltaR, deltaRTLorentz, writeObjToFile
 from CorrelatorMtop.samples.lumi_info          import lumi_info
 
@@ -35,6 +35,7 @@ argParser = argparse.ArgumentParser(description = "Argument parser")
 argParser.add_argument('--logLevel',       action='store',      default='INFO', nargs='?', choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'TRACE', 'NOTSET'], help="Log level for logging")
 argParser.add_argument('--plot_directory', action='store', default='CorrelatorMtop_v1')
 argParser.add_argument('--small',          action='store_true', help='Run only on a small subset of the data?', )
+argParser.add_argument('--fillHists',      action='store_true', help='Store histograms?', )
 argParser.add_argument('--selection_rec',  action='store', default='PFboosted-PFleppt')
 argParser.add_argument('--selection_gen',  action='store', default='GENboosted')
 argParser.add_argument('--era',            action='store', type=str, default="UL2018")
@@ -158,7 +159,7 @@ def getClosestJetIdx(object, event, maxDR, genpf_switch):
             minDR = jet.DeltaR(object)
     return idx_match
 
-def getChargedParticlesFromJet(event, jetidx, genrec, N_parts_max = None):
+def getChargedParticlesFromJet(event, jetidx, genrec, N_parts_max = None, pt_min = 0):
     chargedIds = [211, 13, 11, 1, 321, 2212, 3222, 3112, 3312, 3334]
     particles = []
     if genrec == "gen":
@@ -169,6 +170,8 @@ def getChargedParticlesFromJet(event, jetidx, genrec, N_parts_max = None):
                 continue
             particle = ROOT.TLorentzVector()
             particle.SetPtEtaPhiM(event.GenJetAK8_cons_pt[iPart],event.GenJetAK8_cons_eta[iPart],event.GenJetAK8_cons_phi[iPart],event.GenJetAK8_cons_mass[iPart])
+            if particle.Pt() < pt_min:
+                continue
             charge = 1 if event.GenJetAK8_cons_pdgId[iPart]>0 else -1
             particles.append( (particle, charge) )
     elif genrec == "rec":
@@ -179,27 +182,36 @@ def getChargedParticlesFromJet(event, jetidx, genrec, N_parts_max = None):
                 continue
             particle = ROOT.TLorentzVector()
             particle.SetPtEtaPhiM(event.PFJetAK8_cons_pt[iPart],event.PFJetAK8_cons_eta[iPart],event.PFJetAK8_cons_phi[iPart],event.PFJetAK8_cons_mass[iPart])
+            if particle.Pt() < pt_min:
+                continue
             charge = 1 if event.PFJetAK8_cons_pdgId[iPart]>0 else -1
             particles.append( (particle, charge) )
     # Sort list by pt and truncate at length N_parts_max
     particles_sorted = sorted(particles, key=lambda (particle, charge): particle.Pt(), reverse=True)
     if N_parts_max is not None:
         particles_sorted = particles_sorted[:N_parts_max]
-    # ONE COULD ALSO INTRODUCE A PT CUT HERE
     return particles_sorted
 
 def passTripletSelection(triplet, ptjet, sel="top"):
+    asymm_max_top = pow(172.5,2)/pow(ptjet,2)
+    short_min_top = 0.1
     if sel=="top":
-        asymm_max = pow(172.5,2)/pow(ptjet,2)
-        short_min = 0.1
-        if triplet[1] > asymm_max:
+        if triplet[1] > asymm_max_top:
             return False
-        if triplet[2] < short_min:
+        if triplet[2] < short_min_top:
+            return False
+        return True
+    if sel=="W":
+        if triplet[1] > asymm_max_top:
+            return False
+        if triplet[2] > short_min_top:
             return False
         return True
     else:
         return False
 
+def tag_objects(lst, tag):
+    return [(obj, tag) for obj in lst]
 ################################################################################
 # Define sequences
 sequence       = []
@@ -231,7 +243,7 @@ def getConstituents( event, sample ):
         return
     if deltaRTLorentz(lep_gen, jet_gen) < 0.8:
         return
-    constituent_gen = getChargedParticlesFromJet(event, jet_gen_id, "gen", N_parts_max = 25)
+    constituent_gen = getChargedParticlesFromJet(event, jet_gen_id, "gen", N_parts_max = 25, pt_min = 5)
     event.nGenParts = len(constituent_gen)
 
     # Do the same for PF jets
@@ -241,8 +253,15 @@ def getConstituents( event, sample ):
         return
     if deltaRTLorentz(lep_rec, jet_rec) < 0.8:
         return
-    constituent_rec = getChargedParticlesFromJet(event, jet_rec_id, "rec", N_parts_max = 25)
+    constituent_rec = getChargedParticlesFromJet(event, jet_rec_id, "rec", N_parts_max = 25, pt_min = 5)
     event.nPFParts = len(constituent_rec)
+
+    # Some numbers for histograms
+    event.nGenParts_noCut = len(getChargedParticlesFromJet(event, jet_gen_id, "gen"))
+    event.nGenParts_onlyPT = len(getChargedParticlesFromJet(event, jet_gen_id, "gen", pt_min = 5))
+    event.nPFParts_noCut = len(getChargedParticlesFromJet(event, jet_rec_id, "rec"))
+    event.nPFParts_onlyPT = len(getChargedParticlesFromJet(event, jet_rec_id, "rec", pt_min = 5))
+    #######
 
     # Match constituents
     maxDR_part = 0.05
@@ -290,20 +309,61 @@ def getConstituents( event, sample ):
             constituent_rec_unmatched.append(constituent_rec[i][0])
 
 
+
+
     event.jetpt_gen = jet_gen.Pt()
     event.jetpt_rec = jet_rec.Pt()
     event.nGenAll = len(constituent_gen) if len(constituent_gen) > 0 else float('nan')
     event.nGenMatched = len(constituent_gen_matched) if len(constituent_gen) > 0 else float('nan')
     event.matchingEffi = float(len(constituent_gen_matched))/float(len(constituent_gen)) if len(constituent_gen) > 0 else float('nan')
-    if len(constituent_gen_matched) > 0:
-        _, event.zeta_gen, _, _, event.weight_gen = getTriplets_pp_TLorentz(jet_gen.Pt(), constituent_gen_matched, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
-        _, event.zeta_rec, _, _, event.weight_rec = getTriplets_pp_TLorentz(jet_rec.Pt(), constituent_rec_matched, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
     event.passSel = True
 
-    if len(constituent_gen_unmatched) > 0:
-        _, event.zeta_gen_unmatched, _, _, event.weight_gen_unmatched = getTriplets_pp_TLorentz(jet_gen.Pt(), constituent_gen_unmatched, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
-    if len(constituent_rec_unmatched) > 0:
-        _, event.zeta_rec_unmatched, _, _, event.weight_rec_unmatched = getTriplets_pp_TLorentz(jet_rec.Pt(), constituent_rec_unmatched, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
+    # Now we have separate lists for matched and unmatched particles for both gen and rec.
+    # We can easily form the matched triplets (where all 3 constituents are matched)
+    # by getting all triplets from these lists. This even results in a 1-to-1 match:
+    # triplets_matched_gen[i] is matched to triplets_matched_rec[i].
+    # It is more complicated with the unmatched. Only forming triplets from the
+    # unmatched lists would not give us triplets with 1 or 2 matched and 2 or 1
+    # unmatched constituents.
+    # Thus we keep track of the matching status by inserting a label.
+    # Then we form triplets for only the matched list to get the matched triplets.
+    # Then we form triplets for all (matched+unmatched) particles and select only those
+    # where not all 3 particles are matched.
+    # This gives us all possible triplets but we still have the matched in 1-to-1
+    # matched lists!
+
+    # tag the constituents to keep track of matched and unmatched constituents
+    constituent_gen_matched_tagged = tag_objects(constituent_gen_matched, 'matched')
+    constituent_rec_matched_tagged = tag_objects(constituent_rec_matched, 'matched')
+    constituent_gen_unmatched_tagged = tag_objects(constituent_gen_unmatched, 'unmatched')
+    constituent_rec_unmatched_tagged = tag_objects(constituent_rec_unmatched, 'unmatched')
+    constituent_gen_all_tagged = constituent_gen_matched_tagged + constituent_gen_unmatched_tagged
+    constituent_rec_all_tagged = constituent_rec_matched_tagged + constituent_rec_unmatched_tagged
+
+    # First only form the triplets from the matched list
+    if len(constituent_gen_matched) > 0:
+        _, event.zeta_gen, event.weight_gen, _ = getTriplets_pp_TLorentz_label(jet_gen.Pt(), constituent_gen_matched_tagged, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
+        _, event.zeta_rec, event.weight_rec, _ = getTriplets_pp_TLorentz_label(jet_rec.Pt(), constituent_rec_matched_tagged, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
+
+    # Now form triplets from all constituents (matched+unmatched) but only use the
+    # unmatched (where all three constituents are unmatched)
+    if len(constituent_gen_all_tagged) > 0:
+        # Get all triplets
+        _, zeta_values, weights, triplet_labels = getTriplets_pp_TLorentz_label(jet_gen.Pt(), constituent_gen_all_tagged, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
+        # Only select unmatched triplets
+        labels = np.array(triplet_labels)
+        unmatched_mask = labels == "unmatched"
+        event.zeta_gen_unmatched = zeta_values[unmatched_mask]
+        event.weight_gen_unmatched = weights[unmatched_mask]
+
+    # Do the same for rec
+    if len(constituent_rec_all_tagged) > 0:
+        _, zeta_values, weights, triplet_labels = getTriplets_pp_TLorentz_label(jet_rec.Pt(), constituent_rec_all_tagged, n=1, max_zeta=None, max_delta_zeta=None, delta_legs=None, shortest_side=None, log=False)
+        labels = np.array(triplet_labels)
+        unmatched_mask = labels == "unmatched"
+        event.zeta_rec_unmatched = zeta_values[unmatched_mask]
+        event.weight_rec_unmatched = weights[unmatched_mask]
+
 
 sequence.append( getConstituents )
 
@@ -349,19 +409,24 @@ read_variables = [
 
 ################################################################################
 # Histograms
+pt_windows = [(400,425),(425,450),(450,475),(475,500)]
 histograms = {
-    "Weight_gen": ROOT.TH1F("Weight_gen", "Weight_gen", 100, 0, 0.04),
-    "Weight_rec": ROOT.TH1F("Weight_rec", "Weight_rec", 100, 0, 0.04),
-    "WeightZoom_gen": ROOT.TH1F("WeightZoom_gen", "WeightZoom_gen", 100, 0, 0.002),
-    "WeightZoom_rec": ROOT.TH1F("WeightZoom_rec", "WeightZoom_rec", 100, 0, 0.002),
-    "Weight_matrix": ROOT.TH2F("Weight_matrix", "Weight_matrix", 100, 0, 0.04, 100, 0, 0.04),
-    "Zeta_gen": ROOT.TH1F("Zeta_gen", "Zeta_gen", 100, 0, 3.0),
-    "Zeta_rec": ROOT.TH1F("Zeta_rec", "Zeta_rec", 100, 0, 3.0),
-    "ZetaNoWeight_gen": ROOT.TH1F("ZetaNoWeight_gen", "ZetaNoWeight_gen", 100, 0, 3.0),
-    "ZetaNoWeight_rec": ROOT.TH1F("ZetaNoWeight_rec", "ZetaNoWeight_rec", 100, 0, 3.0),
-    "ZetaNoWeight_matrix": ROOT.TH2F("ZetaNoWeight_matrix", "ZetaNoWeight_matrix", 100, 0, 3.0, 100, 0, 3.0),
-    "MatchingEfficiency": ROOT.TH1F("MatchingEfficiency", "MatchingEfficiency", 50, 0, 1.0),
+    "N_const_rec": ROOT.TH1F("N_const_rec", "N_const_rec", 20, 0, 100),
+    "N_const_nocut_rec": ROOT.TH1F("N_const_nocut_rec", "N_const_nocut_rec", 20, 0, 100),
+    "N_const_onlypt_rec": ROOT.TH1F("N_const_onlypt_rec", "N_const_onlypt_rec", 20, 0, 100),
+    "N_const_gen": ROOT.TH1F("N_const_gen", "N_const_gen", 20, 0, 100),
+    "N_const_nocut_gen": ROOT.TH1F("N_const_nocut_gen", "N_const_nocut_gen", 20, 0, 100),
+    "N_const_onlypt_gen": ROOT.TH1F("N_const_onlypt_gen", "N_const_onlypt_gen", 20, 0, 100),
+    "zeta_ptscaled_rec": ROOT.TH1F("zeta_ptscaled_rec", "zeta_ptscaled_rec", 40, 0, 7),
+    "particle_matching_effi": ROOT.TH1F("particle_matching_effi", "particle_matching_effi", 20, 0.0, 1.0),
+    "triplet_matching_effi_gen": ROOT.TH1F("triplet_matching_effi_gen", "triplet_matching_effi_gen", 20, 0.0, 1.0),
+    "triplet_matching_effi_rec": ROOT.TH1F("triplet_matching_effi_rec", "triplet_matching_effi_rec", 20, 0.0, 1.0),
 }
+for (pt_low, pt_high) in pt_windows:
+    ptstring = "%ito%i"%(pt_low,pt_high)
+    histograms["zeta_"+ptstring+"_rec"] = ROOT.TH1F("zeta_"+ptstring+"_rec", "zeta_"+ptstring+"_rec", 40, 0, 1)
+    histograms["zeta_"+ptstring+"_mt1715_rec"] = ROOT.TH1F("zeta_"+ptstring+"_mt1715_rec", "zeta_"+ptstring+"_mt1715_rec", 40, 0, 1)
+    histograms["zeta_"+ptstring+"_mt1735_rec"] = ROOT.TH1F("zeta_"+ptstring+"_mt1735_rec", "zeta_"+ptstring+"_mt1735_rec", 40, 0, 1)
 
 for sample in mc:
     hist = histograms.copy()
@@ -380,6 +445,8 @@ for sample in mc:
     has_rec_info = array.array('i', [-1])
     pass_triplet_top_gen = array.array('i', [-1])
     pass_triplet_top_rec = array.array('i', [-1])
+    pass_triplet_W_gen = array.array('i', [-1])
+    pass_triplet_W_rec = array.array('i', [-1])
     BW_reweight_171p5 = array.array('f', [0.])
     BW_reweight_173p5 = array.array('f', [0.])
     mtop = array.array('f', [0.])
@@ -398,6 +465,8 @@ for sample in mc:
     new_tree.Branch("has_rec_info", has_rec_info, "has_rec_info/I")
     new_tree.Branch("pass_triplet_top_rec", pass_triplet_top_rec, "pass_triplet_top_rec/I")
     new_tree.Branch("pass_triplet_top_gen", pass_triplet_top_gen, "pass_triplet_top_gen/I")
+    new_tree.Branch("pass_triplet_W_rec", pass_triplet_W_rec, "pass_triplet_W_rec/I")
+    new_tree.Branch("pass_triplet_W_gen", pass_triplet_W_gen, "pass_triplet_W_gen/I")
     new_tree.Branch("BW_reweight_171p5", BW_reweight_171p5, "BW_reweight_171p5/F")
     new_tree.Branch("BW_reweight_173p5", BW_reweight_173p5, "BW_reweight_173p5/F")
     new_tree.Branch("mtop", mtop, "mtop/F")
@@ -409,7 +478,24 @@ for sample in mc:
         event = r.event
         event_counter += 1
         if event.passSel:
-            # hist["MatchingEfficiency"].Fill(event.matchingEffi)
+            ################################################################
+            # Fill some event level hists
+            if args.fillHists:
+                histograms["N_const_gen"].Fill(event.nGenParts)
+                histograms["N_const_nocut_gen"].Fill(event.nGenParts_noCut)
+                histograms["N_const_onlypt_gen"].Fill(event.nGenParts_onlyPT)
+                histograms["N_const_rec"].Fill(event.nPFParts)
+                histograms["N_const_nocut_rec"].Fill(event.nPFParts_noCut)
+                histograms["N_const_onlypt_rec"].Fill(event.nPFParts_onlyPT)
+                histograms["particle_matching_effi"].Fill(event.matchingEffi)
+                N_matched = float(len(event.zeta_gen))
+                N_unmatched_gen = float(len(event.zeta_gen_unmatched))
+                N_unmatched_rec = float(len(event.zeta_rec_unmatched))
+                triplet_effi_gen = N_matched/(N_matched+N_unmatched_gen) if (N_matched+N_unmatched_gen)>0 else 0
+                triplet_effi_rec = N_matched/(N_matched+N_unmatched_rec) if (N_matched+N_unmatched_rec)>0 else 0
+                histograms["triplet_matching_effi_gen"].Fill( triplet_effi_gen )
+                histograms["triplet_matching_effi_rec"].Fill( triplet_effi_rec )
+
             ################################################################
             # Fill new tree with matched triplets
             for i in range(len(event.zeta_gen)):
@@ -424,23 +510,29 @@ for sample in mc:
                 jetpt_rec[0] = event.jetpt_rec
                 pass_triplet_top_gen[0] = 1 if passTripletSelection(event.zeta_gen[i], event.jetpt_gen, sel="top") else 0
                 pass_triplet_top_rec[0] = 1 if passTripletSelection(event.zeta_rec[i], event.jetpt_rec, sel="top") else 0
+                pass_triplet_W_gen[0] = 1 if passTripletSelection(event.zeta_gen[i], event.jetpt_gen, sel="W") else 0
+                pass_triplet_W_rec[0] = 1 if passTripletSelection(event.zeta_rec[i], event.jetpt_rec, sel="W") else 0
                 BW_reweight_171p5[0] = event.BW_reweight_171p5
                 BW_reweight_173p5[0] = event.BW_reweight_173p5
                 mtop[0] = event.mtop
                 event_weight_gen[0] = event.event_weight_gen
                 event_weight_rec[0] = 1.0
                 new_tree.Fill()
+                # Fill hists here
+                if args.fillHists:
+                    if pass_triplet_top_rec[0] == 1:
+                        ptfactor_rec = event.jetpt_rec**2 / (172.5**2)
+                        histograms["zeta_ptscaled_rec"].Fill(event.zeta_rec[i][0]*ptfactor_rec, event.weight_rec[i])
+                        for (pt_low, pt_high) in pt_windows:
+                            if event.jetpt_rec > pt_low and event.jetpt_rec < pt_high:
+                                ptstring = "%ito%i"%(pt_low,pt_high)
+                                histograms["zeta_"+ptstring+"_rec"].Fill(event.zeta_rec[i][0], event.weight_rec[i])
+                                histograms["zeta_"+ptstring+"_mt1715_rec"].Fill(event.zeta_rec[i][0], event.weight_rec[i]*event.BW_reweight_171p5)
+                                histograms["zeta_"+ptstring+"_mt1735_rec"].Fill(event.zeta_rec[i][0], event.weight_rec[i]*event.BW_reweight_173p5)
 
-                # hist["Weight_gen"].Fill(event.weight_gen[i])
-                # hist["Weight_rec"].Fill(event.weight_rec[i])
-                # hist["WeightZoom_gen"].Fill(event.weight_gen[i])
-                # hist["WeightZoom_rec"].Fill(event.weight_rec[i])
-                # hist["Weight_matrix"].Fill(event.weight_gen[i], event.weight_rec[i])
-                # hist["ZetaNoWeight_gen"].Fill(event.zeta_gen[i][0])
-                # hist["ZetaNoWeight_rec"].Fill(event.zeta_rec[i][0])
-                # hist["ZetaNoWeight_matrix"].Fill(event.zeta_gen[i][0], event.zeta_rec[i][0])
-                # hist["Zeta_gen"].Fill(event.zeta_gen[i][0], event.weight_gen[i])
-                # hist["Zeta_rec"].Fill(event.zeta_rec[i][0], event.weight_rec[i])
+
+
+
             ################################################################
             # Fill new tree with unmatched rec triplets
             for i in range(len(event.zeta_rec_unmatched)):
@@ -455,12 +547,25 @@ for sample in mc:
                 jetpt_rec[0] = event.jetpt_rec
                 pass_triplet_top_gen[0] = 0
                 pass_triplet_top_rec[0] = 1 if  passTripletSelection(event.zeta_rec_unmatched[i], event.jetpt_rec, sel="top") else 0
+                pass_triplet_W_gen[0] = 0
+                pass_triplet_W_rec[0] = 1 if passTripletSelection(event.zeta_rec_unmatched[i], event.jetpt_rec, sel="W") else 0
                 BW_reweight_171p5[0] = event.BW_reweight_171p5
                 BW_reweight_173p5[0] = event.BW_reweight_173p5
                 mtop[0] = event.mtop
                 event_weight_gen[0] = event.event_weight_gen
                 event_weight_rec[0] = 1.0
                 new_tree.Fill()
+                # Fill hists here
+                if args.fillHists:
+                    if pass_triplet_top_rec[0] == 1:
+                        ptfactor_rec = event.jetpt_rec**2 / (172.5**2)
+                        histograms["zeta_ptscaled_rec"].Fill(event.zeta_rec_unmatched[i][0]*ptfactor_rec, event.weight_rec_unmatched[i])
+                        for (pt_low, pt_high) in pt_windows:
+                            if event.jetpt_rec > pt_low and event.jetpt_rec < pt_high:
+                                ptstring = "%ito%i"%(pt_low,pt_high)
+                                histograms["zeta_"+ptstring+"_rec"].Fill(event.zeta_rec_unmatched[i][0], event.weight_rec_unmatched[i])
+                                histograms["zeta_"+ptstring+"_mt1715_rec"].Fill(event.zeta_rec_unmatched[i][0], event.weight_rec_unmatched[i]*event.BW_reweight_171p5)
+                                histograms["zeta_"+ptstring+"_mt1735_rec"].Fill(event.zeta_rec_unmatched[i][0], event.weight_rec_unmatched[i]*event.BW_reweight_173p5)
             ################################################################
             # Fill new tree with unmatched gen triplets
             for i in range(len(event.zeta_gen_unmatched)):
@@ -475,6 +580,8 @@ for sample in mc:
                 jetpt_rec[0] = event.jetpt_rec
                 pass_triplet_top_gen[0] = 1 if  passTripletSelection(event.zeta_gen_unmatched[i], event.jetpt_gen, sel="top") else 0
                 pass_triplet_top_rec[0] = 0
+                pass_triplet_W_gen[0] = 1 if passTripletSelection(event.zeta_gen_unmatched[i], event.jetpt_gen, sel="W") else 0
+                pass_triplet_W_rec[0] = 0
                 BW_reweight_171p5[0] = event.BW_reweight_171p5
                 BW_reweight_173p5[0] = event.BW_reweight_173p5
                 mtop[0] = event.mtop
@@ -485,10 +592,9 @@ for sample in mc:
 
     outfilename = outdir+sample.name+".root"
     writeObjToFile(fname=outfilename, obj=new_tree, writename="Events", update=False)
-    # outfile = ROOT.TFile(outfilename, "RECREATE")
-    # outfile.cd()
-    # for histname in hist.keys():
-    #     hist[histname].Write(histname)
-    # new_tree.Write()
-    # outfile.Close()
-    logger.info( "Saved histograms and new tree to file "+outfilename)
+    logger.info( "Saved TTree to file "+outfilename)
+    if args.fillHists:
+        outfilename_hists = outdir+sample.name+"_HISTS.root"
+        for histname in histograms.keys():
+            writeObjToFile(fname=outfilename_hists, obj=histograms[histname], writename=histname, update=True)
+        logger.info( "Saved histograms to file "+outfilename_hists)
