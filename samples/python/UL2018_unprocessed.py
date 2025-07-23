@@ -11,6 +11,12 @@ allSamples = []
 TTToSemiLeptonic = Sample.fromDirectory(name="TTToSemiLeptonic", treeName="Events", isData=False, directory='/scratch-cbe/users/dennis.schwarz/MTopCorrelations/TTToSemiLeptonic_TuneCP5_13TeV-powheg-pythia8', normalization=17230816913.4127, xSection=831.762*(3*0.108)*(1-3*0.108)*2)
 allSamples.append(TTToSemiLeptonic)
 
+TT_Mtt700to1000 = Sample.fromDirectory(name="TT_Mtt700to1000", treeName="Events", isData=False, directory='/scratch-cbe/users/dennis.schwarz/MTopCorrelations/TT_Mtt700to1000_TuneCP5_13TeV-powheg-pythia8', normalization=20265746638.7462, xSection=831.762)
+allSamples.append(TT_Mtt700to1000)
+
+TT_Mtt1000toInf = Sample.fromDirectory(name="TT_Mtt1000toInf", treeName="Events", isData=False, directory='/scratch-cbe/users/dennis.schwarz/MTopCorrelations/TT_Mtt1000toInf_TuneCP5_13TeV-powheg-pythia8', normalization=14574663380.3788, xSection=831.762)
+allSamples.append(TT_Mtt1000toInf)
+
 # TTToSemiLeptonic_mtop171p5 = Sample.fromDirectory(name="TTToSemiLeptonic_mtop171p5", treeName="Events", isData=False, directory='/scratch-cbe/users/dennis.schwarz/MTopCorrelations/TTToSemiLeptonic_mtop171p5_TuneCP5_13TeV-powheg-pythia8', normalization=1.0, xSection=831.762*(3*0.108)*(1-3*0.108)*2)
 # allSamples.append(TTToSemiLeptonic_mtop171p5)
 #
